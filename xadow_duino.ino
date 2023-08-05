@@ -3,10 +3,10 @@
 #include <Adafruit_NeoPixel.h>
 
 
-#define RGB_PIN         5
+#define RGB_PIN         5   // WS281x Data Pin
 #define RGB_MAX_NUM     30
-#define RGB_POWER_PIN   13
-#define RGB_MODE_PIN    7
+#define RGB_POWER_PIN   13  // WS281x Ground Pin
+#define RGB_MODE_PIN    7   // on board button
 #define RGB_INT1_PIN    0
 #define RGB_INT2_PIN    1
 #define RGB_SCL_PIN     3
@@ -100,9 +100,10 @@ void setup() {
     Serial.begin(115200);           // start serial for output
     Serial.println("Xadow Duino debug.");
 #endif;
+    //Timer1.initialize(100000);      // 0.1 seconds in microseconds
+    Timer1.initialize(500000);      // half second in microseconds
+    Timer1.attachInterrupt(timerIsr);
 
-    Timer1.initialize(100000); // 100 ms
-    
     pinMode(RGB_POWER_PIN, OUTPUT);
     pinMode(RGB_PIN, OUTPUT);
     pinMode(RGB_MODE_PIN, INPUT);
@@ -114,6 +115,7 @@ void setup() {
     digitalWrite(RGB_INT1_PIN, HIGH);
     
     pixels.begin();
+    pixels.setBrightness(128);
     delay(1000);
     
     setPixelsPower(RGB_POWER_OFF);
@@ -167,7 +169,7 @@ void loop() {
                 break;
         }
     }
-    
+    // handle on board mode button presses
     if (modePinFlag == 0) {
         modePinFlag = 1;
         if (digitalRead(RGB_MODE_PIN) == 0) {
@@ -182,16 +184,18 @@ void loop() {
                 setPixelsMode(RGB_POWER_OFF, 0, 0, 0);
             } else if (modeFlag == 1) {
                 ws2812Display(RGB_MAX_NUM, 0);
-                setPixelsMode(RGB_MONOCHROME, RGB_MAX_NUM, 0xff00ff, 0);
+                setPixelsMode(RGB_MONOCHROME, RGB_MAX_NUM, 0xff00ff, 1);  // RGB: 255, 0, 255
             } else if (modeFlag == 2) {
                 ws2812Display(RGB_MAX_NUM, 0);
-                setPixelsMode(RGB_MARQUEE, RGB_MAX_NUM, 0xffff00, 0);
+                setPixelsMode(RGB_MARQUEE, RGB_MAX_NUM, 0xffff00, 9);     // RGB: 255, 255, 0
             } else if (modeFlag == 3) {
-                setPixelsMode(RGB_RAINBOW, RGB_MAX_NUM, 0, 0);
+                setPixelsMode(RGB_RAINBOW, RGB_MAX_NUM, 0, 10);
             }
         }
     }
-    if(digitalRead(RGB_MODE_PIN))modePinFlag = 0;
+    if (digitalRead(RGB_MODE_PIN)) {
+        modePinFlag = 0;
+    }
     delay(25);
 }
 
@@ -274,7 +278,7 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
         case RGB_MONOCHROME:
             rgbMode = RGB_MONOCHROME;
             sys_time = 0;
-            if(uiTime == 0) {
+            if (uiTime == 0) {
                 ws2812Display(RGB_MAX_NUM,ulRGB);
                 return;
             }
@@ -282,7 +286,7 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
             ws2812Display(ucNum,ulRGB);
             time_max = uiTime * 10;
             setPixelsPower(RGB_POWER_ON);
-            Timer1.attachInterrupt(timerIsr);
+            Timer1.resume();
 #ifdef DEBUG
             Serial.print("RGB_MONOCHROME time_max is ");Serial.print(time_max);Serial.print("\r\n");
 #endif;  
@@ -308,7 +312,7 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
             ws2812Display(RGB_MAX_NUM, 0);
             setPixelsColor(0,ulRGB);
             setPixelsPower(RGB_POWER_ON);
-            Timer1.attachInterrupt(timerIsr);
+            Timer1.resume();
 #ifdef DEBUG
             Serial.print("RGB_MARQUEE marqueeNumMax is ");Serial.print(marqueeNumMax);Serial.print("\r\n");
 #endif; 
@@ -337,7 +341,8 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
             data |= rgbValue[0].bValue;
             setPixelsColor(0, data);
             setPixelsPower(RGB_POWER_ON);
-            Timer1.attachInterrupt(timerIsr);
+            //Timer1.attachInterrupt(timerIsr);
+            Timer1.resume();
 #ifdef DEBUG
             Serial.print("RGB_MARQUEE rainbowNumMax is ");Serial.print(rainbowNumMax);Serial.print("\r\n");
 #endif; 
@@ -378,10 +383,10 @@ void timerIsr() {
     uint32_t data;
     
     sys_time ++;
-// #ifdef DEBUG
-//     //Serial.print("sys_time is ");Serial.print(sys_time);Serial.print("\r\n");
-// #endif;  
-    if(rgbMode == RGB_MONOCHROME) {
+#ifdef DEBUG
+    Serial.print("sys_time is ");Serial.print(sys_time);Serial.print("\r\n");
+#endif;  
+    if (rgbMode == RGB_MONOCHROME) {
         if (sys_time > time_max) {
             sys_time = 0;
             rgbMode = 0;
