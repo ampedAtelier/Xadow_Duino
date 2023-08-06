@@ -44,3 +44,4 @@ Temporary Items
 
 # VSCode
 .vscode/*
+build/*
