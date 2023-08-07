@@ -95,13 +95,12 @@ void setup() {
     Wire.begin(COLOR_PIXEL_ADDR);
     Wire.onReceive(receiveEvent);
     Wire.onRequest(requestEvent);
-    
 #ifdef DEBUG    
-    Serial.begin(115200);           // start serial for output
+    Serial.begin(115200);               // start serial for output
     Serial.println("Xadow Duino debug.");
 #endif;
-    //Timer1.initialize(100000);      // 0.1 seconds in microseconds
-    Timer1.initialize(500000);      // half second in microseconds
+    //Timer1.initialize(100000);        // 0.1 seconds in microseconds
+    Timer1.initialize(500000);          // half second in microseconds
     Timer1.attachInterrupt(timerIsr);
 
     pinMode(RGB_POWER_PIN, OUTPUT);
@@ -115,7 +114,7 @@ void setup() {
     digitalWrite(RGB_INT1_PIN, HIGH);
     
     pixels.begin();
-    pixels.setBrightness(128);
+    pixels.setBrightness(64);
     delay(1000);
     
     setPixelsPower(RGB_POWER_OFF);
