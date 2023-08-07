@@ -45,3 +45,6 @@ Temporary Items
 # VSCode
 .vscode/*
 build/*
+
+# Development Files
+tasks.md
