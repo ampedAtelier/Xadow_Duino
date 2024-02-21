@@ -42,9 +42,10 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-# VSCode
+# VSCode with Arduino Extension
 .vscode/*
 build/*
 
 # Development Files
+notes.txt
 tasks.md
