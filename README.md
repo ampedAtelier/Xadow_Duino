@@ -5,8 +5,5 @@
 
 ## Required Libraries
 * Wire
-* [TimerOne](https://github.com/PaulStoffregen/TimerOne)
+* [TimerOne](https://github.com/PaulStoffregen/TimerOne) ([documentation](https://www.pjrc.com/teensy/td_libs_TimerOne.html))
 * Adafruit NeoPixel
-
-## Tasks
-- [ ] move sketch to top level directory
