@@ -2,19 +2,19 @@
 #include <TimerOne.h>
 #include <Adafruit_NeoPixel.h>
 
+#define DEBUG
 
-#define RGB_PIN         5   // WS281x Data Pin
-#define RGB_MAX_NUM     30
-#define RGB_POWER_PIN   13  // WS281x Ground Pin
-#define RGB_MODE_PIN    7   // on board button
+const int npDataPin = 5;    // RGB_PIN
+const int npMaxNum = 30;    // RGB_MAX_NUM
+const int npGroundPin = 13; // RGB_POWER_PIN
+const int buttonPin = 7;    // RGB_MODE_PIN
 #define RGB_INT1_PIN    0
 #define RGB_INT2_PIN    1
 #define RGB_SCL_PIN     3
 #define RGB_SDA_PIN     2
 
-#define DEBUG
-#define COLOR_PIXEL_ADDR  35
-#define BUFFER_SIZE  20
+#define COLOR_PIXEL_ADDR  35    // I2C Address of Xadow Duino
+#define BUFFER_SIZE  20         // I2C message buffer size
 
 #define RGB_SET_WORK            0x80
 #define RGB_SET_MODE            0x81
@@ -23,6 +23,7 @@
 #define RGB_MONOCHROME          2
 #define RGB_MARQUEE             3
 #define RGB_RAINBOW             4
+#define RGB_SPARKLE             5
 
 #define RGB_INTERVAL    100
 
@@ -34,14 +35,14 @@ uint8_t scan_data[4] = {0x00,0x00,0x00,COLOR_PIXEL_ADDR};
 uint8_t scan_count = 0;
 boolean flag_data_receive = 0;
 
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(RGB_MAX_NUM, RGB_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(npMaxNum, npDataPin, NEO_GRB + NEO_KHZ800);
 
 typedef struct {
     uint8_t rValue;
     uint8_t gValue;
     uint8_t bValue;
 } RGBValue;
-RGBValue rgbValue[RGB_MAX_NUM] = {0};
+RGBValue rgbValue[npMaxNum] = {0};
 
 const uint8_t RED[126] PROGMEM= {255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,238,221,204,188,171,154,137,119,102,85,
 68,51,34,17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,17,35,52,
@@ -72,7 +73,7 @@ const uint8_t BLUE[126] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 uint32_t sys_time = 0;
 uint32_t time_max = 0;
 
-uint8_t rgbMode = 0;
+uint8_t rgbMode = 0;                   // current WS2812 Display Mode 
 
 uint32_t marqueeNumMax = 0;
 uint32_t marqueeNum = 0;
@@ -87,8 +88,8 @@ uint8_t rainbowRGBNumMax = 0;
 uint8_t rainbowRGBNum = 0;
 uint8_t rainbowTimeFlag = 0;
 
-uint8_t modePinFlag = 0;
-uint8_t modeFlag = 0;
+uint8_t modePinFlag = 0;                // button needs handling flag 0 = true
+uint8_t modeFlag = 0;                   // new WS2812 Display Mode 
 
 
 void setup() {
@@ -103,14 +104,14 @@ void setup() {
     Timer1.initialize(500000);          // half second in microseconds
     Timer1.attachInterrupt(timerIsr);
 
-    pinMode(RGB_POWER_PIN, OUTPUT);
-    pinMode(RGB_PIN, OUTPUT);
-    pinMode(RGB_MODE_PIN, INPUT);
+    pinMode(npGroundPin, OUTPUT);
+    pinMode(npDataPin, OUTPUT);
+    pinMode(buttonPin, INPUT);
     pinMode(RGB_INT1_PIN, OUTPUT);
     pinMode(RGB_INT2_PIN, INPUT);
     
-    digitalWrite(RGB_POWER_PIN, HIGH);
-    digitalWrite(RGB_PIN, HIGH);
+    digitalWrite(npGroundPin, HIGH);
+    digitalWrite(npDataPin, HIGH);
     digitalWrite(RGB_INT1_PIN, HIGH);
     
     pixels.begin();
@@ -171,7 +172,7 @@ void loop() {
     // handle on board mode button presses
     if (modePinFlag == 0) {
         modePinFlag = 1;
-        if (digitalRead(RGB_MODE_PIN) == 0) {
+        if (digitalRead(buttonPin) == 0) { // button released
             modeFlag ++;
             Timer1.stop();
             if (modeFlag > 3)modeFlag = 0;
@@ -182,17 +183,19 @@ void loop() {
             if (modeFlag == 0) {
                 setPixelsMode(RGB_POWER_OFF, 0, 0, 0);
             } else if (modeFlag == 1) {
-                ws2812Display(RGB_MAX_NUM, 0);
-                setPixelsMode(RGB_MONOCHROME, RGB_MAX_NUM, 0xff00ff, 1);  // RGB: 255, 0, 255
+                ws2812Display(npMaxNum, 0);
+                setPixelsMode(RGB_MONOCHROME, npMaxNum, 0xff00ff, 1);  // RGB: 255, 0, 255
             } else if (modeFlag == 2) {
-                ws2812Display(RGB_MAX_NUM, 0);
-                setPixelsMode(RGB_MARQUEE, RGB_MAX_NUM, 0xffff00, 9);     // RGB: 255, 255, 0
+                ws2812Display(npMaxNum, 0);
+                setPixelsMode(RGB_MARQUEE, npMaxNum, 0xffff00, 9);     // RGB: 255, 255, 0
             } else if (modeFlag == 3) {
-                setPixelsMode(RGB_RAINBOW, RGB_MAX_NUM, 0, 10);
+                setPixelsMode(RGB_RAINBOW, npMaxNum, 0, 10);
+            } else if (modeFlag == 4) {
+                setPixelsMode(RGB_SPARKLE, npMaxNum, 0x0000ff, 10);     // RGB: 0, 0, 255
             }
         }
     }
-    if (digitalRead(RGB_MODE_PIN)) {
+    if (digitalRead(buttonPin)) { // button pressed
         modePinFlag = 0;
     }
     delay(25);
@@ -210,16 +213,17 @@ void clearBuffer(uint8_t buff[],uint8_t size) {
     }
 }
 
+// Fills ucNum neopixels with ulRGB color
 void ws2812Display(uint8_t ucNum, uint32_t ulRGB) {   
     uint8_t i;
 
-    if (ucNum > RGB_MAX_NUM) {
-        ucNum = RGB_MAX_NUM;
+    if (ucNum > npMaxNum) {
+        ucNum = npMaxNum;
     }
     for(i=0;i<ucNum;i++) {
         pixels.setPixelColor(i, pixels.Color((ulRGB >> 16) & 0xff,(ulRGB >> 8) & 0xff,ulRGB & 0xff));
     }
-    digitalWrite(RGB_POWER_PIN, HIGH);
+    digitalWrite(npGroundPin, HIGH);
     pixels.show();
     
     for(i=0;i<ucNum;i++) {
@@ -231,11 +235,11 @@ void ws2812Display(uint8_t ucNum, uint32_t ulRGB) {
 
 void setPixelsPower(uint8_t mode) {
     if (mode) { // on
-        digitalWrite(RGB_PIN, LOW);
-        digitalWrite(RGB_POWER_PIN, HIGH);
+        digitalWrite(npDataPin, LOW);
+        digitalWrite(npGroundPin, HIGH);
     } else { // off
-        digitalWrite(RGB_PIN, HIGH);
-        digitalWrite(RGB_POWER_PIN, LOW);
+        digitalWrite(npDataPin, HIGH);
+        digitalWrite(npGroundPin, LOW);
     }
 }
 
@@ -243,13 +247,13 @@ void setPixelsColor(uint8_t ucNum,uint32_t ulRGB) {
     uint8_t i;
     uint32_t grbTemp;
     
-    if(ucNum > (RGB_MAX_NUM - 1)) return;
+    if(ucNum > (npMaxNum - 1)) return;
     
     rgbValue[ucNum].rValue = ulRGB >> 16;
     rgbValue[ucNum].gValue = ulRGB >> 8;
     rgbValue[ucNum].bValue = ulRGB;
     
-    for(i=0;i<RGB_MAX_NUM;i++) {
+    for(i=0;i<npMaxNum;i++) {
         grbTemp |= rgbValue[i].rValue;
         grbTemp <<= 8;
         grbTemp |= rgbValue[i].gValue;
@@ -257,7 +261,7 @@ void setPixelsColor(uint8_t ucNum,uint32_t ulRGB) {
         grbTemp |= rgbValue[i].bValue;
         pixels.setPixelColor(i, pixels.Color(rgbValue[i].rValue, rgbValue[i].gValue, rgbValue[i].bValue));
     }
-    digitalWrite(RGB_POWER_PIN, HIGH);
+    digitalWrite(npGroundPin, HIGH);
     pixels.show();
 }
 
@@ -267,7 +271,7 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
     switch(ucMode) {
         case RGB_POWER_OFF:
             sys_time = 0;
-            ws2812Display(RGB_MAX_NUM, 0);
+            ws2812Display(npMaxNum, 0);
             setPixelsPower(RGB_POWER_OFF);
             break;
         case RGB_POWER_ON:
@@ -278,10 +282,10 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
             rgbMode = RGB_MONOCHROME;
             sys_time = 0;
             if (uiTime == 0) {
-                ws2812Display(RGB_MAX_NUM,ulRGB);
+                ws2812Display(npMaxNum,ulRGB);
                 return;
             }
-            ws2812Display(RGB_MAX_NUM, 0);
+            ws2812Display(npMaxNum, 0);
             ws2812Display(ucNum,ulRGB);
             time_max = uiTime * 10;
             setPixelsPower(RGB_POWER_ON);
@@ -301,14 +305,14 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
                 marqueeTimeFlag = 0;
             }
             marqueeNumMax = uiTime * 10;
-            if (ucNum > RGB_MAX_NUM) {
-                marqueeRGBNumMax = RGB_MAX_NUM;
+            if (ucNum > npMaxNum) {
+                marqueeRGBNumMax = npMaxNum;
             } else {
                 marqueeRGBNumMax = ucNum;
             }
             marqueeRGB = ulRGB;
             sys_time = 0;
-            ws2812Display(RGB_MAX_NUM, 0);
+            ws2812Display(npMaxNum, 0);
             setPixelsColor(0,ulRGB);
             setPixelsPower(RGB_POWER_ON);
             Timer1.resume();
@@ -327,12 +331,12 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
                 rainbowTimeFlag = 0;
             }
             rainbowNumMax = uiTime * 10;
-            if (ucNum > RGB_MAX_NUM) {
-                rainbowRGBNumMax = RGB_MAX_NUM;
+            if (ucNum > npMaxNum) {
+                rainbowRGBNumMax = npMaxNum;
             } else {
                 rainbowRGBNumMax = ucNum;
             }
-            ws2812Display(RGB_MAX_NUM, 0);
+            ws2812Display(npMaxNum, 0);
             data |= rgbValue[0].rValue;
             data <<= 8;
             data |= rgbValue[0].gValue;
@@ -390,12 +394,12 @@ void timerIsr() {
             sys_time = 0;
             rgbMode = 0;
             time_max = 0;
-            ws2812Display(RGB_MAX_NUM,0);
+            ws2812Display(npMaxNum,0);
             Timer1.stop();
             setPixelsPower(RGB_POWER_OFF);
         }
     } else if (rgbMode == RGB_MARQUEE) {
-        for(i=0;i<RGB_MAX_NUM;i++) {
+        for(i=0;i<npMaxNum;i++) {
             rgbValue[i].rValue = 0;
             rgbValue[i].gValue = 0;
             rgbValue[i].bValue = 0;
@@ -416,7 +420,7 @@ void timerIsr() {
                 marqueeRGB = 0;
                 marqueeRGBNum = 0;
                 Timer1.stop();
-                ws2812Display(RGB_MAX_NUM,0);
+                ws2812Display(npMaxNum,0);
                 setPixelsPower(RGB_POWER_OFF);
             }
         }
@@ -452,7 +456,7 @@ void timerIsr() {
                 rainbowNumMax = 0;
                 rainbowRGBNum = 0;
                 Timer1.stop();
-                ws2812Display(RGB_MAX_NUM,0);
+                ws2812Display(npMaxNum,0);
                 setPixelsPower(RGB_POWER_OFF);
             }
         }
