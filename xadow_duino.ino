@@ -10,20 +10,23 @@ const int npGroundPin = 13; // RGB_POWER_PIN
 const int buttonPin = 7;    // RGB_MODE_PIN
 #define RGB_INT1_PIN    0
 #define RGB_INT2_PIN    1
-#define RGB_SCL_PIN     3
-#define RGB_SDA_PIN     2
+#define RGB_SCL_PIN     3   // unused?
+#define RGB_SDA_PIN     2   // unused?
 
 #define COLOR_PIXEL_ADDR  35    // I2C Address of Xadow Duino
 #define BUFFER_SIZE  20         // I2C message buffer size
 
 #define RGB_SET_WORK            0x80
 #define RGB_SET_MODE            0x81
-#define RGB_POWER_OFF           0
-#define RGB_POWER_ON            1
-#define RGB_MONOCHROME          2
-#define RGB_MARQUEE             3
-#define RGB_RAINBOW             4
-#define RGB_SPARKLE             5
+
+enum pixelMode {
+  RGB_POWER_OFF,    // 0 
+  RGB_POWER_ON,
+  RGB_MONOCHROME,
+  RGB_MARQUEE,
+  RGB_RAINBOW,
+  RGB_SPARKLE
+};
 
 #define RGB_INTERVAL    100
 
@@ -73,7 +76,7 @@ const uint8_t BLUE[126] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 uint32_t sys_time = 0;
 uint32_t time_max = 0;
 
-uint8_t rgbMode = 0;                   // current WS2812 Display Mode 
+uint8_t curPixelMode = 0;                   // current WS2812 Display Mode 
 
 uint32_t marqueeNumMax = 0;
 uint32_t marqueeNum = 0;
@@ -88,7 +91,7 @@ uint8_t rainbowRGBNumMax = 0;
 uint8_t rainbowRGBNum = 0;
 uint8_t rainbowTimeFlag = 0;
 
-uint8_t modePinFlag = 0;                // button needs handling flag 0 = true
+boolean shouldHandleButton = true;      // button needs handling flag 0 = true
 uint8_t modeFlag = 0;                   // new WS2812 Display Mode 
 
 
@@ -118,7 +121,7 @@ void setup() {
     pixels.setBrightness(64);
     delay(1000);
     
-    setPixelsPower(RGB_POWER_OFF);
+    setPixelsPower(false);
 }
 
 void loop() {
@@ -170,14 +173,14 @@ void loop() {
         }
     }
     // handle on board mode button presses
-    if (modePinFlag == 0) {
-        modePinFlag = 1;
+    if (shouldHandleButton == true) {
+        shouldHandleButton = false;
         if (digitalRead(buttonPin) == 0) { // button released
             modeFlag ++;
             Timer1.stop();
             if (modeFlag > 3)modeFlag = 0;
 #ifdef DEBUG  
-            Serial.print("Button press! rgbMode is ");
+            Serial.print("Button press! curPixelMode is ");
             Serial.println(modeFlag);
 #endif;
             if (modeFlag == 0) {
@@ -196,7 +199,7 @@ void loop() {
         }
     }
     if (digitalRead(buttonPin)) { // button pressed
-        modePinFlag = 0;
+        shouldHandleButton = true;
     }
     delay(25);
 }
@@ -233,8 +236,8 @@ void ws2812Display(uint8_t ucNum, uint32_t ulRGB) {
     }
 }
 
-void setPixelsPower(uint8_t mode) {
-    if (mode) { // on
+void setPixelsPower(boolean shouldBeOn) {
+    if (shouldBeOn == true) {
         digitalWrite(npDataPin, LOW);
         digitalWrite(npGroundPin, HIGH);
     } else { // off
@@ -272,14 +275,14 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
         case RGB_POWER_OFF:
             sys_time = 0;
             ws2812Display(npMaxNum, 0);
-            setPixelsPower(RGB_POWER_OFF);
+            setPixelsPower(false);
             break;
         case RGB_POWER_ON:
             sys_time = 0;
-            setPixelsPower(RGB_POWER_ON);
+            setPixelsPower(true);
             break;
         case RGB_MONOCHROME:
-            rgbMode = RGB_MONOCHROME;
+            curPixelMode = RGB_MONOCHROME;
             sys_time = 0;
             if (uiTime == 0) {
                 ws2812Display(npMaxNum,ulRGB);
@@ -288,14 +291,14 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
             ws2812Display(npMaxNum, 0);
             ws2812Display(ucNum,ulRGB);
             time_max = uiTime * 10;
-            setPixelsPower(RGB_POWER_ON);
+            setPixelsPower(true);
             Timer1.resume();
 #ifdef DEBUG
             Serial.print("RGB_MONOCHROME time_max is ");Serial.print(time_max);Serial.print("\r\n");
 #endif;  
             break;
         case RGB_MARQUEE:
-            rgbMode = RGB_MARQUEE;
+            curPixelMode = RGB_MARQUEE;
             sys_time = 0;
             marqueeRGBNum = 0;
             
@@ -314,14 +317,14 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
             sys_time = 0;
             ws2812Display(npMaxNum, 0);
             setPixelsColor(0,ulRGB);
-            setPixelsPower(RGB_POWER_ON);
+            setPixelsPower(true);
             Timer1.resume();
 #ifdef DEBUG
             Serial.print("RGB_MARQUEE marqueeNumMax is ");Serial.print(marqueeNumMax);Serial.print("\r\n");
 #endif; 
             break;
         case RGB_RAINBOW:
-            rgbMode = RGB_RAINBOW;
+            curPixelMode = RGB_RAINBOW;
             sys_time = 0;
             rainbowRGBNum = 0;
             
@@ -343,7 +346,7 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
             data <<= 8;
             data |= rgbValue[0].bValue;
             setPixelsColor(0, data);
-            setPixelsPower(RGB_POWER_ON);
+            setPixelsPower(true);
             //Timer1.attachInterrupt(timerIsr);
             Timer1.resume();
 #ifdef DEBUG
@@ -389,16 +392,16 @@ void timerIsr() {
 #ifdef DEBUG
     Serial.print("sys_time is ");Serial.print(sys_time);Serial.print("\r\n");
 #endif;  
-    if (rgbMode == RGB_MONOCHROME) {
+    if (curPixelMode == RGB_MONOCHROME) {
         if (sys_time > time_max) {
             sys_time = 0;
-            rgbMode = 0;
+            curPixelMode = 0;
             time_max = 0;
             ws2812Display(npMaxNum,0);
             Timer1.stop();
-            setPixelsPower(RGB_POWER_OFF);
+            setPixelsPower(false);
         }
-    } else if (rgbMode == RGB_MARQUEE) {
+    } else if (curPixelMode == RGB_MARQUEE) {
         for(i=0;i<npMaxNum;i++) {
             rgbValue[i].rValue = 0;
             rgbValue[i].gValue = 0;
@@ -413,7 +416,7 @@ void timerIsr() {
         if(marqueeTimeFlag == 0) {
             marqueeNum ++;
             if (marqueeNum >= marqueeNumMax) {
-                rgbMode = 0;
+                curPixelMode = 0;
                 time_max = 0;
                 marqueeNum = 0;
                 marqueeNumMax = 0;
@@ -421,10 +424,10 @@ void timerIsr() {
                 marqueeRGBNum = 0;
                 Timer1.stop();
                 ws2812Display(npMaxNum,0);
-                setPixelsPower(RGB_POWER_OFF);
+                setPixelsPower(false);
             }
         }
-    } else if(rgbMode == RGB_RAINBOW) {
+    } else if(curPixelMode == RGB_RAINBOW) {
         for (i=0;i<rainbowRGBNumMax;i++)  {
             rgbValue[i].rValue = pgm_read_byte(&RED[rainbowRGBNum+i]);
             rgbValue[i].gValue = pgm_read_byte(&GREEN[rainbowRGBNum+i]);
@@ -450,14 +453,14 @@ void timerIsr() {
         if (rainbowTimeFlag == 0) {
             rainbowNum ++;
             if(rainbowNum >= rainbowNumMax) {
-                rgbMode = 0;
+                curPixelMode = 0;
                 time_max = 0;
                 rainbowNum = 0;
                 rainbowNumMax = 0;
                 rainbowRGBNum = 0;
                 Timer1.stop();
                 ws2812Display(npMaxNum,0);
-                setPixelsPower(RGB_POWER_OFF);
+                setPixelsPower(false);
             }
         }
     }
