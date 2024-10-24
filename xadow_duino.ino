@@ -5,7 +5,7 @@
 #define DEBUG
 
 const int npDataPin = 5;    // RGB_PIN
-const int npMaxNum = 30;    // RGB_MAX_NUM
+const int npMaxNum = 14;    // RGB_MAX_NUM
 const int npGroundPin = 13; // RGB_POWER_PIN
 const int buttonPin = 7;    // RGB_MODE_PIN
 #define RGB_INT1_PIN    0
@@ -41,9 +41,9 @@ boolean flag_data_receive = 0;
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(npMaxNum, npDataPin, NEO_GRB + NEO_KHZ800);
 
 typedef struct {
-    uint8_t rValue;
-    uint8_t gValue;
-    uint8_t bValue;
+  uint8_t rValue;
+  uint8_t gValue;
+  uint8_t bValue;
 } RGBValue;
 RGBValue rgbValue[npMaxNum] = {0};
 
@@ -76,7 +76,7 @@ const uint8_t BLUE[126] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 uint32_t sys_time = 0;
 uint32_t time_max = 0;
 
-uint8_t curPixelMode = 0;                   // current WS2812 Display Mode 
+uint8_t curPixelMode = RGB_SPARKLE;    // current WS2812 Display Mode 
 
 uint32_t marqueeNumMax = 0;
 uint32_t marqueeNum = 0;
@@ -121,7 +121,7 @@ void setup() {
     pixels.setBrightness(64);
     delay(1000);
     
-    setPixelsPower(false);
+    setPixelsPower(true);
 }
 
 void loop() {
@@ -178,7 +178,9 @@ void loop() {
         if (digitalRead(buttonPin) == 0) { // button released
             modeFlag ++;
             Timer1.stop();
-            if (modeFlag > 3)modeFlag = 0;
+            if (modeFlag > 4){
+              modeFlag = 0;
+            }
 #ifdef DEBUG  
             Serial.print("Button press! curPixelMode is ");
             Serial.println(modeFlag);
@@ -272,14 +274,14 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
     uint32_t data = 0;
     
     switch(ucMode) {
+        case RGB_POWER_ON:
+            sys_time = 0;
+            setPixelsPower(true);
+            break;
         case RGB_POWER_OFF:
             sys_time = 0;
             ws2812Display(npMaxNum, 0);
             setPixelsPower(false);
-            break;
-        case RGB_POWER_ON:
-            sys_time = 0;
-            setPixelsPower(true);
             break;
         case RGB_MONOCHROME:
             curPixelMode = RGB_MONOCHROME;
@@ -353,6 +355,11 @@ void setPixelsMode(uint8_t ucMode, uint8_t ucNum, uint32_t ulRGB, uint16_t uiTim
             Serial.print("RGB_MARQUEE rainbowNumMax is ");Serial.print(rainbowNumMax);Serial.print("\r\n");
 #endif; 
             break;
+        case RGB_SPARKLE:
+            curPixelMode = RGB_SPARKLE;
+            setPixelsPower(true);
+            Timer1.resume();
+            break;
         default:
             break;
     }
@@ -389,9 +396,9 @@ void timerIsr() {
     uint32_t data;
     
     sys_time ++;
-#ifdef DEBUG
-    Serial.print("sys_time is ");Serial.print(sys_time);Serial.print("\r\n");
-#endif;  
+// #ifdef DEBUG
+//     Serial.print("sys_time is ");Serial.print(sys_time);Serial.print("\r\n");
+// #endif;  
     if (curPixelMode == RGB_MONOCHROME) {
         if (sys_time > time_max) {
             sys_time = 0;
@@ -427,7 +434,7 @@ void timerIsr() {
                 setPixelsPower(false);
             }
         }
-    } else if(curPixelMode == RGB_RAINBOW) {
+    } else if (curPixelMode == RGB_RAINBOW) {
         for (i=0;i<rainbowRGBNumMax;i++)  {
             rgbValue[i].rValue = pgm_read_byte(&RED[rainbowRGBNum+i]);
             rgbValue[i].gValue = pgm_read_byte(&GREEN[rainbowRGBNum+i]);
@@ -463,5 +470,44 @@ void timerIsr() {
                 setPixelsPower(false);
             }
         }
+    } else if (curPixelMode == RGB_SPARKLE) {
+        int pixel = random(pixels.numPixels());
+        uint32_t color = pixels.getPixelColor(pixel);
+        if (color == 0) {
+            //fadeIn(pixel, mainColor);
+            color = pixels.Color(255, 0, 255); // magenta
+            uint8_t red = color >> 16;
+            uint8_t green = color >> 8;
+            uint8_t blue = color;
+
+            // fade in 5 steps
+            for (int x=0; x < 5; x++) {
+                int r = red * (x+1); r /= 5;
+                int g = green * (x+1); g /= 5;
+                int b = blue * (x+1); b /= 5;
+
+                pixels.setPixelColor(pixel, pixels.Color(r, g, b));
+                pixels.show();
+                delay(40);
+            }
+        } else {
+            //fadeOut(pixel);
+            uint32_t color = pixels.getPixelColor(pixel);
+            uint8_t red = color >> 16;
+            uint8_t green = color >> 8;
+            uint8_t blue = color;
+
+            // fade out in 5 steps
+            for (int x=5; x >= 0; x--) {
+                int r = red * x; r /= 5;
+                int g = green * x; g /= 5;
+                int b = blue * x; b /= 5;
+
+                pixels.setPixelColor(pixel, pixels.Color(r, g, b));
+                pixels.show();
+                delay(40);
+            }
+        }
+        //pixels.show();
     }
 }
